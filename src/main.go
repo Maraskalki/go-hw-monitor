@@ -1,3 +1,5 @@
+// Package main provides a hardware monitoring application with terminal UI.
+// It demonstrates Go concurrency, system programming, and real-time data visualization.
 package main
 
 import (
@@ -13,8 +15,8 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
-// SystemStats - Custom struct to group related data together
-// This demonstrates Go's type system and data organization
+// SystemStats holds real-time system monitoring data.
+// It groups related hardware metrics for easy handling and display.
 type SystemStats struct {
 	CPUUsage    float64 // CPU percentage (0-100)
 	MemoryUsage float64 // Memory percentage (0-100)
@@ -95,8 +97,8 @@ func main() {
 	}
 }
 
-// setupUI - Configures the layout of UI components
-// This function demonstrates: function parameters, calling other functions
+// setupUI configures the initial layout of all UI components.
+// It automatically detects terminal dimensions and delegates to setupUIWithSize.
 func setupUI(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *widgets.List) {
 	// Get current terminal dimensions
 	termWidth, termHeight := ui.TerminalDimensions()
@@ -104,8 +106,9 @@ func setupUI(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *widgets.
 	setupUIWithSize(cpuGauge, memoryGauge, diskGauge, infoList, termWidth, termHeight)
 }
 
-// setupUIWithSize - Configures layout with specific dimensions
-// This demonstrates: coordinate system, responsive design, widget properties
+// setupUIWithSize configures the layout of UI components for specific dimensions.
+// It creates a responsive 2x2 grid: 3 gauges on top, info panel on bottom.
+// Coordinates use SetRect(x1, y1, x2, y2) where (0,0) is top-left.
 func setupUIWithSize(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *widgets.List, width, height int) {
 	// COORDINATE SYSTEM: SetRect(x1, y1, x2, y2)
 	// (0,0) is top-left corner, coordinates increase right and down
@@ -141,8 +144,8 @@ func setupUIWithSize(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *
 	infoList.TitleStyle.Fg = ui.ColorCyan
 }
 
-// updateDisplay - Fetches system stats and updates the UI
-// This demonstrates: goroutines, channels, UI updates, string formatting
+// updateDisplay fetches current system stats and updates all UI components.
+// It uses concurrent data fetching for optimal performance and responsiveness.
 func updateDisplay(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *widgets.List) {
 	// CONCURRENT DATA FETCHING - Don't block the UI!
 	// Create a channel to receive the complete system stats
@@ -185,8 +188,8 @@ func updateDisplay(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *wi
 	ui.Render(cpuGauge, memoryGauge, diskGauge, infoList)
 }
 
-// fetchSystemStats - Gets all system statistics concurrently
-// This demonstrates: complex concurrency, multiple goroutines, channel coordination
+// fetchSystemStats gathers all system statistics using concurrent goroutines.
+// It coordinates multiple system calls and returns consolidated data via channel.
 func fetchSystemStats(statsCh chan SystemStats) {
 	// Create empty stats struct to fill with data
 	var stats SystemStats
@@ -231,8 +234,9 @@ func fetchSystemStats(statsCh chan SystemStats) {
 	statsCh <- stats
 }
 
-// fetchCPUUsage - Gets CPU usage as a goroutine
-// This demonstrates: system calls, error handling, channel communication
+// fetchCPUUsage retrieves current CPU utilization percentage.
+// It measures usage over config.CPUSampleDuration and sends result to cpuCh.
+// Sends -1 on error as an error indicator.
 func fetchCPUUsage(cpuCh chan float64) {
 	// cpu.Percent() measures CPU usage over a time period
 	// config.CPUSampleDuration is how long to measure (100ms for responsiveness)
@@ -246,8 +250,9 @@ func fetchCPUUsage(cpuCh chan float64) {
 	}
 }
 
-// fetchMemoryUsage - Gets memory usage as a goroutine
-// This demonstrates: pointers, error handling, system information
+// fetchMemoryUsage retrieves current memory usage statistics.
+// It queries virtual memory info and sends a pointer to the result via memCh.
+// Sends nil on error as an error indicator.
 func fetchMemoryUsage(memCh chan *mem.VirtualMemoryStat) {
 	// mem.VirtualMemory() returns a pointer to a struct with memory info
 	if vmStat, err := mem.VirtualMemory(); err == nil {
@@ -259,8 +264,9 @@ func fetchMemoryUsage(memCh chan *mem.VirtualMemoryStat) {
 	}
 }
 
-// fetchDiskUsage - Gets disk usage as a goroutine
-// This demonstrates: system calls, configuration usage, disk I/O
+// fetchDiskUsage retrieves disk usage statistics for the configured drive.
+// It queries the drive specified in config.DiskDrive and sends result via diskCh.
+// Sends nil on error as an error indicator.
 func fetchDiskUsage(diskCh chan *disk.UsageStat) {
 	// disk.Usage() gets information about the specified drive
 	// config.DiskDrive is set in our configuration (usually "C:" on Windows)
