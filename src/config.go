@@ -32,5 +32,5 @@ var Config = struct {
 
 	// System monitoring settings
 	DiskDrive:         "C:",
-	CPUSampleDuration: 1 * time.Second,
+	CPUSampleDuration: 100 * time.Millisecond,
 }
