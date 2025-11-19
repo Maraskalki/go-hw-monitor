@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"sync" // For WaitGroup concurrency coordination
 	"time"
 
 	// Import with alias - 'ui' is shorter than 'termui'
@@ -25,6 +26,14 @@ type SystemStats struct {
 	DiskUsage   float64 // Disk percentage (0-100)
 	DiskUsed    float64 // Disk used in GB
 	DiskTotal   float64 // Total disk space in GB
+}
+
+// MetricResult represents the result of a single metric collection operation.
+// It provides proper error handling instead of using sentinel values.
+type MetricResult struct {
+	Type  string      // Metric type: "cpu", "memory", or "disk"
+	Value interface{} // The actual metric data
+	Error error       // Any error that occurred during collection
 }
 
 // Global configuration - accessible from anywhere in this package
@@ -188,93 +197,124 @@ func updateDisplay(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *wi
 	ui.Render(cpuGauge, memoryGauge, diskGauge, infoList)
 }
 
-// fetchSystemStats gathers all system statistics using concurrent goroutines.
-// It coordinates multiple system calls and returns consolidated data via channel.
+// fetchSystemStats gathers all system statistics using WaitGroup coordination.
+// It demonstrates proper Go concurrency patterns with error handling.
 func fetchSystemStats(statsCh chan SystemStats) {
 	// Create empty stats struct to fill with data
 	var stats SystemStats
 
-	// CREATE CHANNELS for each type of data we need to fetch
-	// These act like "mailboxes" for goroutines to send results
-	cpuCh := make(chan float64, 1)                // For CPU percentage
-	memCh := make(chan *mem.VirtualMemoryStat, 1) // For memory info (pointer to struct)
-	diskCh := make(chan *disk.UsageStat, 1)       // For disk info (pointer to struct)
+	// WAITGROUP COORDINATION - Better than manual channel management
+	var wg sync.WaitGroup
+	results := make(chan MetricResult, 3) // Buffered channel for all results
 
-	// START ALL GOROUTINES AT ONCE - They run simultaneously!
-	// This is much faster than fetching one after another
-	go fetchCPUUsage(cpuCh)    // Goroutine 1: Get CPU data
-	go fetchMemoryUsage(memCh) // Goroutine 2: Get memory data
-	go fetchDiskUsage(diskCh)  // Goroutine 3: Get disk data
+	// START ALL GOROUTINES WITH WAITGROUP COORDINATION
+	// Each goroutine will signal completion via wg.Done()
+	wg.Add(3) // We're starting 3 goroutines
 
-	// COLLECT RESULTS - Wait for each goroutine to send data
-	// The order doesn't matter - we process them as they arrive
+	go fetchCPUMetric(&wg, results)    // Goroutine 1: Get CPU data
+	go fetchMemoryMetric(&wg, results) // Goroutine 2: Get memory data
+	go fetchDiskMetric(&wg, results)   // Goroutine 3: Get disk data
 
-	// Collect CPU result
-	if cpuUsage := <-cpuCh; cpuUsage >= 0 { // Negative values indicate error
-		stats.CPUUsage = cpuUsage
-	}
+	// WAIT FOR ALL GOROUTINES TO COMPLETE
+	// This is safer than waiting for channels individually
+	go func() {
+		wg.Wait()      // Block until all goroutines call Done()
+		close(results) // Signal that no more data will be sent
+	}()
 
-	// Collect Memory result
-	if vmStat := <-memCh; vmStat != nil { // nil indicates error
-		stats.MemoryUsage = vmStat.UsedPercent
-		// Convert bytes to gigabytes: divide by 1024³
-		stats.MemoryUsed = float64(vmStat.Used) / 1024 / 1024 / 1024
-		stats.MemoryTotal = float64(vmStat.Total) / 1024 / 1024 / 1024
-	}
+	// COLLECT AND PROCESS ALL RESULTS
+	// Range over channel until it's closed
+	for result := range results {
+		if result.Error != nil {
+			// Log error but continue with other metrics
+			log.Printf("Error fetching %s metric: %v", result.Type, result.Error)
+			continue
+		}
 
-	// Collect Disk result
-	if diskStat := <-diskCh; diskStat != nil { // nil indicates error
-		stats.DiskUsage = diskStat.UsedPercent
-		// Convert bytes to gigabytes: divide by 1024³
-		stats.DiskUsed = float64(diskStat.Used) / 1024 / 1024 / 1024
-		stats.DiskTotal = float64(diskStat.Total) / 1024 / 1024 / 1024
+		// Process successful results based on type
+		switch result.Type {
+		case "cpu":
+			if cpuUsage, ok := result.Value.(float64); ok {
+				stats.CPUUsage = cpuUsage
+			}
+		case "memory":
+			if vmStat, ok := result.Value.(*mem.VirtualMemoryStat); ok {
+				stats.MemoryUsage = vmStat.UsedPercent
+				// Convert bytes to gigabytes: divide by 1024³
+				stats.MemoryUsed = float64(vmStat.Used) / 1024 / 1024 / 1024
+				stats.MemoryTotal = float64(vmStat.Total) / 1024 / 1024 / 1024
+			}
+		case "disk":
+			if diskStat, ok := result.Value.(*disk.UsageStat); ok {
+				stats.DiskUsage = diskStat.UsedPercent
+				// Convert bytes to gigabytes: divide by 1024³
+				stats.DiskUsed = float64(diskStat.Used) / 1024 / 1024 / 1024
+				stats.DiskTotal = float64(diskStat.Total) / 1024 / 1024 / 1024
+			}
+		}
 	}
 
 	// SEND COMPLETE STATS - Send our filled struct to the waiting function
 	statsCh <- stats
 }
 
-// fetchCPUUsage retrieves current CPU utilization percentage.
-// It measures usage over config.CPUSampleDuration and sends result to cpuCh.
-// Sends -1 on error as an error indicator.
-func fetchCPUUsage(cpuCh chan float64) {
+// fetchCPUMetric retrieves CPU usage with proper error handling and WaitGroup coordination.
+// It demonstrates how to integrate WaitGroup with error handling.
+func fetchCPUMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
+	// ALWAYS call Done() when function exits - use defer for safety
+	defer wg.Done()
+
 	// cpu.Percent() measures CPU usage over a time period
 	// config.CPUSampleDuration is how long to measure (100ms for responsiveness)
 	// false means "don't get per-CPU stats, just overall average"
-	if percentages, err := cpu.Percent(config.CPUSampleDuration, false); err == nil && len(percentages) > 0 {
-		// Success! Send the first (and only) percentage value
-		cpuCh <- percentages[0]
-	} else {
-		// Error occurred - send -1 as error indicator
-		cpuCh <- -1
+	percentages, err := cpu.Percent(config.CPUSampleDuration, false)
+	if err != nil {
+		// Send proper error instead of sentinel value
+		results <- MetricResult{Type: "cpu", Value: nil, Error: fmt.Errorf("failed to get CPU usage: %w", err)}
+		return
 	}
+
+	if len(percentages) == 0 {
+		// Handle edge case where no data is returned
+		results <- MetricResult{Type: "cpu", Value: nil, Error: fmt.Errorf("no CPU usage data returned")}
+		return
+	}
+
+	// Success! Send the actual value with no error
+	results <- MetricResult{Type: "cpu", Value: percentages[0], Error: nil}
 }
 
-// fetchMemoryUsage retrieves current memory usage statistics.
-// It queries virtual memory info and sends a pointer to the result via memCh.
-// Sends nil on error as an error indicator.
-func fetchMemoryUsage(memCh chan *mem.VirtualMemoryStat) {
+// fetchMemoryMetric retrieves memory usage with proper error handling and WaitGroup coordination.
+func fetchMemoryMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
+	// ALWAYS call Done() when function exits - use defer for safety
+	defer wg.Done()
+
 	// mem.VirtualMemory() returns a pointer to a struct with memory info
-	if vmStat, err := mem.VirtualMemory(); err == nil {
-		// Success! Send the pointer to the struct
-		memCh <- vmStat
-	} else {
-		// Error occurred - send nil pointer as error indicator
-		memCh <- nil
+	vmStat, err := mem.VirtualMemory()
+	if err != nil {
+		// Send proper error instead of nil pointer
+		results <- MetricResult{Type: "memory", Value: nil, Error: fmt.Errorf("failed to get memory usage: %w", err)}
+		return
 	}
+
+	// Success! Send the actual data with no error
+	results <- MetricResult{Type: "memory", Value: vmStat, Error: nil}
 }
 
-// fetchDiskUsage retrieves disk usage statistics for the configured drive.
-// It queries the drive specified in config.DiskDrive and sends result via diskCh.
-// Sends nil on error as an error indicator.
-func fetchDiskUsage(diskCh chan *disk.UsageStat) {
+// fetchDiskMetric retrieves disk usage with proper error handling and WaitGroup coordination.
+func fetchDiskMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
+	// ALWAYS call Done() when function exits - use defer for safety
+	defer wg.Done()
+
 	// disk.Usage() gets information about the specified drive
 	// config.DiskDrive is set in our configuration (usually "C:" on Windows)
-	if diskStat, err := disk.Usage(config.DiskDrive); err == nil {
-		// Success! Send the pointer to the disk stats struct
-		diskCh <- diskStat
-	} else {
-		// Error occurred - send nil pointer as error indicator
-		diskCh <- nil
+	diskStat, err := disk.Usage(config.DiskDrive)
+	if err != nil {
+		// Send proper error instead of nil pointer
+		results <- MetricResult{Type: "disk", Value: nil, Error: fmt.Errorf("failed to get disk usage for %s: %w", config.DiskDrive, err)}
+		return
 	}
+
+	// Success! Send the actual data with no error
+	results <- MetricResult{Type: "disk", Value: diskStat, Error: nil}
 }
