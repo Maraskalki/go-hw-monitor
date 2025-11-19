@@ -18,7 +18,7 @@ var Config = struct {
 	CPUSampleDuration time.Duration
 }{
 	// Refresh the display every 5 seconds
-	RefreshInterval: 5 * time.Second,
+	RefreshInterval: 1 * time.Second,
 
 	// Time format (24-hour format HH:MM:SS)
 	TimeFormat: "15:04:05",
