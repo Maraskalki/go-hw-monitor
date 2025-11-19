@@ -86,7 +86,7 @@ go version
 
    ```ps
    # Create executable in build directory
-   go build -o build\hw-monitor.exe src\main.go
+   go build -o build\hw-monitor.exe .\src
    ```
 
 2. **Run the executable:**
