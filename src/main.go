@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
+	"runtime"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -10,25 +13,37 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
-func main() {
-	fmt.Println("Hardware Monitor - Press Ctrl+C to stop")
-	fmt.Println("=========================================")
+// Global configuration
+var config = Config
 
-	// Run monitoring loop every second
+func main() {
+	// Run monitoring loop using configured refresh interval
 	for {
 		displaySystemStats()
-		time.Sleep(1 * time.Second)
+		time.Sleep(config.RefreshInterval)
 	}
+}
+
+// clearScreen clears the console screen in a cross-platform way
+func clearScreen() {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "cls")
+	} else {
+		cmd = exec.Command("clear")
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Run()
 }
 
 // displaySystemStats shows CPU, Memory, and Disk usage
 func displaySystemStats() {
-	// Clear screen (Windows command)
-	fmt.Print("\033[2J\033[H")
+	// Clear screen (Windows compatible)
+	clearScreen()
 
-	fmt.Println("Hardware Monitor - Press Ctrl+C to stop")
-	fmt.Println("=========================================")
-	fmt.Printf("Time: %s\n\n", time.Now().Format("15:04:05"))
+	fmt.Println(config.Title)
+	fmt.Println(config.Separator)
+	fmt.Printf("Time: %s\n\n", time.Now().Format(config.TimeFormat))
 
 	// Get CPU usage
 	getCPUUsage()
@@ -42,15 +57,15 @@ func displaySystemStats() {
 
 // getCPUUsage displays CPU usage percentage
 func getCPUUsage() {
-	// Get CPU usage percentage (averaged over 1 second)
-	percentages, err := cpu.Percent(1*time.Second, false)
+	// Get CPU usage percentage using configured sample duration
+	percentages, err := cpu.Percent(config.CPUSampleDuration, false)
 	if err != nil {
 		log.Printf("Error getting CPU usage: %v", err)
 		return
 	}
 
 	if len(percentages) > 0 {
-		fmt.Printf("🖥️  CPU Usage: %.1f%%\n", percentages[0])
+		fmt.Printf("CPU Usage: %.*f%%\n", config.DecimalPlaces, percentages[0])
 	}
 }
 
@@ -63,23 +78,24 @@ func getMemoryUsage() {
 		return
 	}
 
-	fmt.Printf("🧠 Memory Usage: %.1f%% (Used: %.1f GB / Total: %.1f GB)\n",
-		vmStat.UsedPercent,
-		float64(vmStat.Used)/1024/1024/1024,
-		float64(vmStat.Total)/1024/1024/1024)
+	fmt.Printf("Memory Usage: %.*f%% (Used: %.*f GB / Total: %.*f GB)\n",
+		config.DecimalPlaces, vmStat.UsedPercent,
+		config.DecimalPlaces, float64(vmStat.Used)/1024/1024/1024,
+		config.DecimalPlaces, float64(vmStat.Total)/1024/1024/1024)
 }
 
-// getDiskUsage displays disk usage for C: drive
+// getDiskUsage displays disk usage for configured drive
 func getDiskUsage() {
-	// Get disk usage for C: drive (main Windows drive)
-	diskStat, err := disk.Usage("C:")
+	// Get disk usage for configured drive
+	diskStat, err := disk.Usage(config.DiskDrive)
 	if err != nil {
 		log.Printf("Error getting disk usage: %v", err)
 		return
 	}
 
-	fmt.Printf("💾 Disk Usage (C:): %.1f%% (Used: %.1f GB / Total: %.1f GB)\n",
-		diskStat.UsedPercent,
-		float64(diskStat.Used)/1024/1024/1024,
-		float64(diskStat.Total)/1024/1024/1024)
+	fmt.Printf("Disk Usage (%s): %.*f%% (Used: %.*f GB / Total: %.*f GB)\n",
+		config.DiskDrive,
+		config.DecimalPlaces, diskStat.UsedPercent,
+		config.DecimalPlaces, float64(diskStat.Used)/1024/1024/1024,
+		config.DecimalPlaces, float64(diskStat.Total)/1024/1024/1024)
 }
