@@ -1,0 +1,104 @@
+{
+    "github.copilot.chat.codeGeneration.useInstructionFiles": true,
+
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": null,
+
+    "workbench.editor.titleScrollbarSizing": "large",
+
+    "indentRainbow.indicatorStyle": "light",
+
+    "markdown.extension.preview.autoShowPreviewToSide": false,
+    "markdown.extension.toc.levels": "1..2",
+    "markdown.copyFiles.destination": {
+        "**/*": "${documentWorkspaceFolder}/docs/media/${documentBaseName}/"
+    },
+
+    "markdownlint.config": {
+        "MD024": false, // Multiple headings with the same content
+        "MD025": false // Multiple top level headings in a document
+    },
+
+    "[markdown]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "prettier.tabWidth": 2
+    },
+    "[json]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "prettier.tabWidth": 4
+    },
+    "[jsonc]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "prettier.tabWidth": 4
+    },
+    "[go]": {
+        "editor.defaultFormatter": "golang.go",
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+        }
+    },
+
+    // LTEX might require to install Eclipse Temurin manually.
+    "ltex.java.path": "C:\\Users\\Giamma\\AppData\\Local\\Programs\\Eclipse Adoptium\\jdk-25.0.1.8-hotspot\\",
+    "ltex.language": "en-GB",
+    // "ltex.additionalRules.enablePickyRules": true,
+    "ltex.disabledRules": {
+        "en-GB": ["OXFORD_SPELLING_Z_NOT_S", "HYPOTHESIS_TYPOGRAPHY"]
+    },
+    "ltex.configurationTarget": {
+        "dictionary": "workspaceFolder",
+        "disabledRules": "workspaceFolder",
+        "hiddenFalsePositives": "workspaceFolder"
+    },
+
+    "files.insertFinalNewline": true,
+    "files.associations": {
+        "copilot-instructions.md": "markdown",
+        "*.instructions.md": "markdown"
+    },
+
+    "cSpell.language": "en-GB",
+    "cSpell.words": [
+        "cpython",
+        "direnv",
+        "docstrings",
+        "gofmt",
+        "goimports",
+        "golangci",
+        "ipynb",
+        "math",
+        "mypy",
+        "numpy",
+        "nuxt",
+        "pydocstyle",
+        "pyenv",
+        "pypackages",
+        "pyproject",
+        "pytest",
+        "pytype",
+        "venv",
+        "winget"
+    ],
+
+    "ltex.hiddenFalsePositives": {
+        "en-GB": []
+    },
+    "ltex.dictionary": {
+        "en-GB": [
+            "const-correctness",
+            "cpp",
+            "csharp",
+            "docstring",
+            "docstrings",
+            "gofmt",
+            "goimports",
+            "golangci",
+            "GoogleTest",
+            "postconditions",
+            "Pytest",
+            "pytest",
+            "RAII",
+            "uv"
+        ]
+    }
+}

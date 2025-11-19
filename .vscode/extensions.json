@@ -1,0 +1,13 @@
+{
+    "recommendations": [
+        "golang.go",
+        "streetsidesoftware.code-spell-checker",
+        "esbenp.prettier-vscode",
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint",
+        "charliermarsh.ruff",
+        "redhat.vscode-yaml",
+        "tamasfe.even-better-toml",
+        "oderwat.indent-rainbow"
+    ]
+}
