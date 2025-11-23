@@ -80,7 +80,7 @@ go version
    go run src\main.go
    ```
 
-### Compile the Application
+### Building
 
 1. **Build executable:**
 
@@ -93,6 +93,51 @@ go version
 
    ```ps
    .\build\hw-monitor.exe
+   ```
+
+### Testing
+
+1. **Run all tests:**
+
+   ```ps
+   # Run all tests in the project
+   go test ./src
+
+   # Run tests with verbose output
+   go test -v ./src
+   ```
+
+2. **Run specific tests:**
+
+   ```ps
+   # Run tests matching a pattern
+   go test -v ./src -run TestGopsutil
+
+   # Run a specific test function
+   go test -v ./src -run TestGopsutilMonitorCPUUsage
+   ```
+
+3. **Test coverage:**
+
+   ```ps
+   # Run tests with coverage report
+   go test -cover ./src
+
+   # Generate detailed coverage report (use quotes in PowerShell)
+   go test "-coverprofile=coverage.out" ./src
+
+   # View coverage report in browser
+   go tool cover "-html=coverage.out"
+   ```
+
+4. **Test with build tags:**
+
+   ```ps
+   # Skip hardware tests in CI environments
+   go test -short ./src
+
+   # Run only quick tests
+   go test -v ./src -short
    ```
 
 ### Dependency Management
