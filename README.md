@@ -126,6 +126,9 @@ go version
    # Generate detailed coverage report (use quotes in PowerShell)
    go test "-coverprofile=coverage.out" ./src
 
+   # View coverage report in terminal
+   go tool cover "-func=coverage.out"
+
    # View coverage report in browser
    go tool cover "-html=coverage.out"
    ```
