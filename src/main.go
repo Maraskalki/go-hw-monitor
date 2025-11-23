@@ -125,28 +125,28 @@ func setupUIWithSize(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *
 
 	// CPU Gauge - Left third of screen, top half
 	cpuGauge.Title = "CPU Usage"
-	cpuGauge.SetRect(0, 0, width/3, height/2) // Left third: x from 0 to width/3
-	cpuGauge.BarColor = ui.ColorYellow        // Yellow bar (warning color)
-	cpuGauge.BorderStyle.Fg = ui.ColorWhite   // White border
-	cpuGauge.TitleStyle.Fg = ui.ColorCyan     // Cyan title
+	cpuGauge.SetRect(0, 0, width/config.ScreenThirds, height/config.ScreenHalves) // Left third
+	cpuGauge.BarColor = ui.ColorYellow                                            // Yellow bar (warning color)
+	cpuGauge.BorderStyle.Fg = ui.ColorWhite                                       // White border
+	cpuGauge.TitleStyle.Fg = ui.ColorCyan                                         // Cyan title
 
 	// Memory Gauge - Middle third of screen, top half
 	memoryGauge.Title = "Memory Usage"
-	memoryGauge.SetRect(width/3, 0, 2*width/3, height/2) // Middle third
-	memoryGauge.BarColor = ui.ColorGreen                 // Green bar (safe color)
+	memoryGauge.SetRect(width/config.ScreenThirds, 0, 2*width/config.ScreenThirds, height/config.ScreenHalves) // Middle third
+	memoryGauge.BarColor = ui.ColorGreen                                                                       // Green bar (safe color)
 	memoryGauge.BorderStyle.Fg = ui.ColorWhite
 	memoryGauge.TitleStyle.Fg = ui.ColorCyan
 
 	// Disk Gauge - Right third of screen, top half
 	diskGauge.Title = "Disk Usage"
-	diskGauge.SetRect(2*width/3, 0, width, height/2) // Right third
-	diskGauge.BarColor = ui.ColorRed                 // Red bar (danger color)
+	diskGauge.SetRect(2*width/config.ScreenThirds, 0, width, height/config.ScreenHalves) // Right third
+	diskGauge.BarColor = ui.ColorRed                                                     // Red bar (danger color)
 	diskGauge.BorderStyle.Fg = ui.ColorWhite
 	diskGauge.TitleStyle.Fg = ui.ColorCyan
 
 	// Info List - Full width, bottom half
 	infoList.Title = "System Information"
-	infoList.SetRect(0, height/2, width, height) // Full width, bottom half
+	infoList.SetRect(0, height/config.ScreenHalves, width, height) // Full width, bottom half
 	infoList.TextStyle = ui.NewStyle(ui.ColorWhite)
 	infoList.WrapText = false // Don't wrap long lines
 	infoList.BorderStyle.Fg = ui.ColorWhite
@@ -158,7 +158,7 @@ func setupUIWithSize(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *
 func updateDisplay(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *widgets.List) {
 	// CONCURRENT DATA FETCHING - Don't block the UI!
 	// Create a channel to receive the complete system stats
-	statsCh := make(chan SystemStats, 1) // Buffered channel (can hold 1 value)
+	statsCh := make(chan SystemStats, config.ChannelBuffer) // Buffered channel
 	// Start a goroutine to fetch all data concurrently
 	go fetchSystemStats(statsCh) // This runs in the background
 
@@ -167,27 +167,27 @@ func updateDisplay(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *wi
 
 	// UPDATE GAUGES - Convert our data to visual elements
 	// Gauges expect integer percentages (0-100)
-	cpuGauge.Percent = int(stats.CPUUsage)                 // Convert float to int
-	cpuGauge.Label = fmt.Sprintf("%.1f%%", stats.CPUUsage) // Format with 1 decimal
+	cpuGauge.Percent = int(stats.CPUUsage)                                       // Convert float to int
+	cpuGauge.Label = fmt.Sprintf("%.*f%%", config.DecimalPlaces, stats.CPUUsage) // Format with configured precision
 
 	memoryGauge.Percent = int(stats.MemoryUsage)
-	memoryGauge.Label = fmt.Sprintf("%.1f%%", stats.MemoryUsage)
+	memoryGauge.Label = fmt.Sprintf("%.*f%%", config.DecimalPlaces, stats.MemoryUsage)
 
 	diskGauge.Percent = int(stats.DiskUsage)
-	diskGauge.Label = fmt.Sprintf("%.1f%%", stats.DiskUsage)
+	diskGauge.Label = fmt.Sprintf("%.*f%%", config.DecimalPlaces, stats.DiskUsage)
 
 	// UPDATE INFO LIST - Create detailed text information
 	// infoList.Rows is a slice of strings (like an array but dynamic)
 	infoList.Rows = []string{
 		fmt.Sprintf("Time: %s", time.Now().Format(config.TimeFormat)),
 		"", // Empty line for spacing
-		fmt.Sprintf("CPU: %.1f%%", stats.CPUUsage),
+		fmt.Sprintf("CPU: %.*f%%", config.DecimalPlaces, stats.CPUUsage),
 		"",
-		fmt.Sprintf("Memory: %.1f%% (%.1f GB / %.1f GB)",
-			stats.MemoryUsage, stats.MemoryUsed, stats.MemoryTotal),
+		fmt.Sprintf("Memory: %.*f%% (%.*f GB / %.*f GB)",
+			config.DecimalPlaces, stats.MemoryUsage, config.DecimalPlaces, stats.MemoryUsed, config.DecimalPlaces, stats.MemoryTotal),
 		"",
-		fmt.Sprintf("Disk (%s): %.1f%% (%.1f GB / %.1f GB)",
-			config.DiskDrive, stats.DiskUsage, stats.DiskUsed, stats.DiskTotal),
+		fmt.Sprintf("Disk (%s): %.*f%% (%.*f GB / %.*f GB)",
+			config.DiskDrive, config.DecimalPlaces, stats.DiskUsage, config.DecimalPlaces, stats.DiskUsed, config.DecimalPlaces, stats.DiskTotal),
 		"",
 		"Press 'q' or Ctrl+C to quit", // User instruction
 	}
@@ -205,11 +205,11 @@ func fetchSystemStats(statsCh chan SystemStats) {
 
 	// WAITGROUP COORDINATION - Better than manual channel management
 	var wg sync.WaitGroup
-	results := make(chan MetricResult, 3) // Buffered channel for all results
+	results := make(chan MetricResult, config.ResultsBuffer) // Buffered channel for all results
 
 	// START ALL GOROUTINES WITH WAITGROUP COORDINATION
 	// Each goroutine will signal completion via wg.Done()
-	wg.Add(3) // We're starting 3 goroutines
+	wg.Add(config.MetricCount) // We're starting configured number of goroutines
 
 	go fetchCPUMetric(&wg, results)    // Goroutine 1: Get CPU data
 	go fetchMemoryMetric(&wg, results) // Goroutine 2: Get memory data
@@ -240,16 +240,16 @@ func fetchSystemStats(statsCh chan SystemStats) {
 		case "memory":
 			if vmStat, ok := result.Value.(*mem.VirtualMemoryStat); ok {
 				stats.MemoryUsage = vmStat.UsedPercent
-				// Convert bytes to gigabytes: divide by 1024³
-				stats.MemoryUsed = float64(vmStat.Used) / 1024 / 1024 / 1024
-				stats.MemoryTotal = float64(vmStat.Total) / 1024 / 1024 / 1024
+				// Convert bytes to gigabytes using config constant
+				stats.MemoryUsed = float64(vmStat.Used) / float64(config.BytesToGB)
+				stats.MemoryTotal = float64(vmStat.Total) / float64(config.BytesToGB)
 			}
 		case "disk":
 			if diskStat, ok := result.Value.(*disk.UsageStat); ok {
 				stats.DiskUsage = diskStat.UsedPercent
-				// Convert bytes to gigabytes: divide by 1024³
-				stats.DiskUsed = float64(diskStat.Used) / 1024 / 1024 / 1024
-				stats.DiskTotal = float64(diskStat.Total) / 1024 / 1024 / 1024
+				// Convert bytes to gigabytes using config constant
+				stats.DiskUsed = float64(diskStat.Used) / float64(config.BytesToGB)
+				stats.DiskTotal = float64(diskStat.Total) / float64(config.BytesToGB)
 			}
 		}
 	}
