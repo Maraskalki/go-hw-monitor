@@ -29,7 +29,7 @@ type MetricResult struct {
 
 // fetchSystemStats gathers all system statistics using WaitGroup coordination.
 // It demonstrates proper Go concurrency patterns with error handling.
-func fetchSystemStats(statsCh chan SystemStats) {
+func fetchSystemStats(monitor SystemMonitor, statsCh chan SystemStats) {
 	// Create empty stats struct to fill with data
 	var stats SystemStats
 
@@ -41,9 +41,9 @@ func fetchSystemStats(statsCh chan SystemStats) {
 	// Each goroutine will signal completion via wg.Done()
 	wg.Add(config.MetricCount) // We're starting configured number of goroutines
 
-	go fetchCPUMetric(&wg, results)    // Goroutine 1: Get CPU data
-	go fetchMemoryMetric(&wg, results) // Goroutine 2: Get memory data
-	go fetchDiskMetric(&wg, results)   // Goroutine 3: Get disk data
+	go fetchCPUMetric(monitor, &wg, results)    // Goroutine 1: Get CPU data
+	go fetchMemoryMetric(monitor, &wg, results) // Goroutine 2: Get memory data
+	go fetchDiskMetric(monitor, &wg, results)   // Goroutine 3: Get disk data
 
 	// WAIT FOR ALL GOROUTINES TO COMPLETE
 	// This is safer than waiting for channels individually
@@ -91,9 +91,9 @@ func fetchSystemStats(statsCh chan SystemStats) {
 	statsCh <- stats
 }
 
-// fetchCPUMetric retrieves CPU usage using our SystemMonitor interface.
+// fetchCPUMetric retrieves CPU usage using the provided SystemMonitor interface.
 // This demonstrates interface usage - we don't know or care what implementation is used!
-func fetchCPUMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
+func fetchCPUMetric(monitor SystemMonitor, wg *sync.WaitGroup, results chan<- MetricResult) {
 	// ALWAYS call Done() when function exits - use defer for safety
 	defer wg.Done()
 
@@ -111,9 +111,9 @@ func fetchCPUMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
 	results <- MetricResult{Type: "cpu", Value: cpuUsage, Error: nil}
 }
 
-// fetchMemoryMetric retrieves memory usage using our SystemMonitor interface.
+// fetchMemoryMetric retrieves memory usage using the provided SystemMonitor interface.
 // Clean and simple - just like the CPU version!
-func fetchMemoryMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
+func fetchMemoryMetric(monitor SystemMonitor, wg *sync.WaitGroup, results chan<- MetricResult) {
 	// ALWAYS call Done() when function exits - use defer for safety
 	defer wg.Done()
 
@@ -129,9 +129,9 @@ func fetchMemoryMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
 	results <- MetricResult{Type: "memory", Value: memoryInfo, Error: nil}
 }
 
-// fetchDiskMetric retrieves disk usage using our SystemMonitor interface.
+// fetchDiskMetric retrieves disk usage using the provided SystemMonitor interface.
 // Clean and consistent with other interface-based functions!
-func fetchDiskMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
+func fetchDiskMetric(monitor SystemMonitor, wg *sync.WaitGroup, results chan<- MetricResult) {
 	// ALWAYS call Done() when function exits - use defer for safety
 	defer wg.Done()
 

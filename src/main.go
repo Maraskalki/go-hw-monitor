@@ -9,10 +9,6 @@ import (
 // Global configuration - accessible from anywhere in this package
 var config = Config
 
-// Global monitor instance - this is our interface in action!
-// We use the constructor function to create a clean instance
-var monitor SystemMonitor = NewGopsutilMonitor()
-
 // main - Entry point of our program, now completely focused on coordination
 func main() {
 	// Create and setup the application (handles its own UI initialization)

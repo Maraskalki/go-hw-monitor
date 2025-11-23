@@ -59,12 +59,12 @@ func setupUIWithSize(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *
 
 // updateDisplay fetches current system stats and updates all UI components.
 // It uses concurrent data fetching for optimal performance and responsiveness.
-func updateDisplay(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *widgets.List) {
+func updateDisplay(cpuGauge, memoryGauge, diskGauge *widgets.Gauge, infoList *widgets.List, monitor SystemMonitor) {
 	// CONCURRENT DATA FETCHING - Don't block the UI!
 	// Create a channel to receive the complete system stats
 	statsCh := make(chan SystemStats, config.ChannelBuffer) // Buffered channel
 	// Start a goroutine to fetch all data concurrently
-	go fetchSystemStats(statsCh) // This runs in the background
+	go fetchSystemStats(monitor, statsCh) // This runs in the background
 
 	// BLOCKING RECEIVE - Wait for the goroutine to send us data
 	stats := <-statsCh // This blocks until data arrives

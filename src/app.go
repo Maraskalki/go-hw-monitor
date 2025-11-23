@@ -19,15 +19,19 @@ type App struct {
 	infoList    *widgets.List
 	ticker      *time.Ticker
 	uiEvents    <-chan ui.Event
+	monitor     SystemMonitor // App manages its own monitor instance
 }
 
 // newApp creates a new App instance with all components initialized and configured.
-// It now handles its own UI initialization for better encapsulation.
+// It now handles its own UI initialization and creates its own monitor for complete encapsulation.
 func newApp() (*App, error) {
 	// Initialize the terminal UI system first
 	if err := ui.Init(); err != nil {
 		return nil, fmt.Errorf("failed to initialize termui: %w", err)
 	}
+
+	// Create the monitor instance - App handles its own dependencies
+	monitor := NewGopsutilMonitor()
 
 	// Create UI components using the factory function from ui.go
 	cpuGauge, memoryGauge, diskGauge, infoList := createWidgets()
@@ -48,6 +52,7 @@ func newApp() (*App, error) {
 		infoList:    infoList,
 		ticker:      ticker,
 		uiEvents:    uiEvents,
+		monitor:     monitor, // App owns its monitor
 	}, nil
 }
 
@@ -99,5 +104,5 @@ func (app *App) handleResize(e ui.Event) {
 
 // updateDisplay refreshes the UI with current system data.
 func (app *App) updateDisplay() {
-	updateDisplay(app.cpuGauge, app.memoryGauge, app.diskGauge, app.infoList)
+	updateDisplay(app.cpuGauge, app.memoryGauge, app.diskGauge, app.infoList, app.monitor)
 }
