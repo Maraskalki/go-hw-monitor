@@ -11,6 +11,41 @@ import (
 	"github.com/shirou/gopsutil/v4/mem"
 )
 
+// Internal interfaces for dependency injection and testing
+// These allow us to mock the gopsutil calls in tests
+
+// cpuProvider wraps gopsutil cpu functions
+type cpuProvider interface {
+	Percent(duration time.Duration, percpu bool) ([]float64, error)
+}
+
+// memProvider wraps gopsutil memory functions
+type memProvider interface {
+	VirtualMemory() (*mem.VirtualMemoryStat, error)
+}
+
+// diskProvider wraps gopsutil disk functions
+type diskProvider interface {
+	Usage(path string) (*disk.UsageStat, error)
+}
+
+// Real implementations of the providers
+type realCPUProvider struct{}
+type realMemProvider struct{}
+type realDiskProvider struct{}
+
+func (r realCPUProvider) Percent(duration time.Duration, percpu bool) ([]float64, error) {
+	return cpu.Percent(duration, percpu)
+}
+
+func (r realMemProvider) VirtualMemory() (*mem.VirtualMemoryStat, error) {
+	return mem.VirtualMemory()
+}
+
+func (r realDiskProvider) Usage(path string) (*disk.UsageStat, error) {
+	return disk.Usage(path)
+}
+
 // SystemMonitor interface defines what we need from any monitoring system.
 // This is the "contract" - any type that implements these methods can be used.
 // Interfaces in Go make code flexible and testable.
@@ -43,21 +78,27 @@ type DiskInfo struct {
 // It uses the gopsutil library to get real system metrics.
 // This is called a "concrete type" that implements the interface.
 type GopsutilMonitor struct {
-	// Empty struct - we don't need to store any data
-	// All the work is done by calling gopsutil functions
+	// Dependencies for testing - these can be mocked
+	cpu  cpuProvider
+	mem  memProvider
+	disk diskProvider
 }
 
-// NewGopsutilMonitor creates a new instance of the production monitor.
-// This is a constructor function - a common Go pattern for creating instances.
-func NewGopsutilMonitor() SystemMonitor {
-	return &GopsutilMonitor{}
+// NewGopsutilMonitor creates a new monitor with injectable dependencies.
+// For production use, pass real providers. For testing, pass mocks.
+func NewGopsutilMonitor(cpuProv cpuProvider, memProv memProvider, diskProv diskProvider) SystemMonitor {
+	return &GopsutilMonitor{
+		cpu:  cpuProv,
+		mem:  memProv,
+		disk: diskProv,
+	}
 }
 
 // GetCPUUsage implements SystemMonitor interface for CPU monitoring.
 // This wraps the gopsutil cpu.Percent function in our clean interface.
 func (g *GopsutilMonitor) GetCPUUsage(duration time.Duration) (float64, error) {
-	// Same logic as before, but now it's in an interface method
-	percentages, err := cpu.Percent(duration, false)
+	// Use injected dependency instead of calling cpu.Percent directly
+	percentages, err := g.cpu.Percent(duration, false)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get CPU usage: %w", err)
 	}
@@ -72,8 +113,8 @@ func (g *GopsutilMonitor) GetCPUUsage(duration time.Duration) (float64, error) {
 // GetMemoryUsage implements SystemMonitor interface for memory monitoring.
 // This wraps gopsutil mem.VirtualMemory in our clean interface.
 func (g *GopsutilMonitor) GetMemoryUsage() (*MemoryInfo, error) {
-	// Call gopsutil to get raw data
-	vmStat, err := mem.VirtualMemory()
+	// Use injected dependency instead of calling mem.VirtualMemory directly
+	vmStat, err := g.mem.VirtualMemory()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get memory usage: %w", err)
 	}
@@ -89,8 +130,8 @@ func (g *GopsutilMonitor) GetMemoryUsage() (*MemoryInfo, error) {
 // GetDiskUsage implements SystemMonitor interface for disk monitoring.
 // This wraps gopsutil disk.Usage in our clean interface.
 func (g *GopsutilMonitor) GetDiskUsage(path string) (*DiskInfo, error) {
-	// Call gopsutil to get raw data
-	diskStat, err := disk.Usage(path)
+	// Use injected dependency instead of calling disk.Usage directly
+	diskStat, err := g.disk.Usage(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get disk usage for %s: %w", path, err)
 	}

@@ -3,25 +3,60 @@
 package main
 
 import (
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/mem"
 )
+
+// Mock implementations for testing error paths
+
+// mockCPUProvider allows us to control CPU function behavior in tests
+type mockCPUProvider struct {
+	percentages []float64
+	err         error
+}
+
+func (m mockCPUProvider) Percent(duration time.Duration, percpu bool) ([]float64, error) {
+	return m.percentages, m.err
+}
+
+// mockMemProvider allows us to control memory function behavior in tests
+type mockMemProvider struct {
+	vmStat *mem.VirtualMemoryStat
+	err    error
+}
+
+func (m mockMemProvider) VirtualMemory() (*mem.VirtualMemoryStat, error) {
+	return m.vmStat, m.err
+}
+
+// mockDiskProvider allows us to control disk function behavior in tests
+type mockDiskProvider struct {
+	usageStat *disk.UsageStat
+	err       error
+}
+
+func (m mockDiskProvider) Usage(path string) (*disk.UsageStat, error) {
+	return m.usageStat, m.err
+}
 
 // TestNewGopsutilMonitor tests the constructor function.
 // This tests that we get a valid monitor instance.
 func TestNewGopsutilMonitor(t *testing.T) {
 	// Act
-	monitor := NewGopsutilMonitor()
+	monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, realDiskProvider{})
 
 	// Assert
 	if monitor == nil {
 		t.Fatal("NewGopsutilMonitor returned nil")
 	}
 
-	// Check that it implements the interface
-	_, ok := monitor.(SystemMonitor)
-	if !ok {
-		t.Error("NewGopsutilMonitor doesn't implement SystemMonitor interface")
+	// Check that it implements the interface (this is now guaranteed by the return type)
+	if monitor == nil {
+		t.Error("NewGopsutilMonitor returned nil")
 	}
 }
 
@@ -82,7 +117,7 @@ func TestDiskInfoStruct(t *testing.T) {
 // This tests our actual production code that calls gopsutil.
 func TestGopsutilMonitorCPUUsage(t *testing.T) {
 	// Arrange
-	monitor := NewGopsutilMonitor()
+	monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, realDiskProvider{})
 
 	// Act
 	cpu, err := monitor.GetCPUUsage(100 * time.Millisecond)
@@ -103,7 +138,7 @@ func TestGopsutilMonitorCPUUsage(t *testing.T) {
 // This tests our actual production code that calls gopsutil.
 func TestGopsutilMonitorMemoryUsage(t *testing.T) {
 	// Arrange
-	monitor := NewGopsutilMonitor()
+	monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, realDiskProvider{})
 
 	// Act
 	mem, err := monitor.GetMemoryUsage()
@@ -139,7 +174,7 @@ func TestGopsutilMonitorMemoryUsage(t *testing.T) {
 // This tests our actual production code that calls gopsutil.
 func TestGopsutilMonitorDiskUsage(t *testing.T) {
 	// Arrange
-	monitor := NewGopsutilMonitor()
+	monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, realDiskProvider{})
 
 	// Act - Test with a path that should exist on most systems
 	disk, err := monitor.GetDiskUsage("C:")
@@ -179,7 +214,7 @@ func TestGopsutilMonitorDiskUsage(t *testing.T) {
 // This tests how our real code handles invalid inputs.
 func TestGopsutilMonitorErrorHandling(t *testing.T) {
 	// Arrange
-	monitor := NewGopsutilMonitor()
+	monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, realDiskProvider{})
 
 	// Test invalid disk path
 	_, err := monitor.GetDiskUsage("/this/path/definitely/does/not/exist/on/any/system")
@@ -197,7 +232,7 @@ func TestGopsutilMonitorErrorHandling(t *testing.T) {
 // This ensures our MemoryInfo and DiskInfo structs contain the expected data.
 func TestGopsutilMonitorDataConsistency(t *testing.T) {
 	// Arrange
-	monitor := NewGopsutilMonitor()
+	monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, realDiskProvider{})
 
 	// Act
 	mem, err := monitor.GetMemoryUsage()
@@ -214,6 +249,168 @@ func TestGopsutilMonitorDataConsistency(t *testing.T) {
 		t.Errorf("Memory percentage inconsistent: reported %f%%, calculated %f%%",
 			mem.UsedPercent, calculatedPercent)
 	}
+}
+
+// TestGopsutilMonitorErrorPaths tests all the error conditions to achieve 100% coverage.
+// This tests the error handling paths that are hard to trigger with real hardware.
+func TestGopsutilMonitorErrorPaths(t *testing.T) {
+	t.Run("CPU Percent Error", func(t *testing.T) {
+		// Arrange - Simple dependency injection
+		mockCPU := mockCPUProvider{
+			percentages: nil,
+			err:         errors.New("mock CPU error"),
+		}
+		monitor := NewGopsutilMonitor(mockCPU, realMemProvider{}, realDiskProvider{})
+
+		// Act
+		_, err := monitor.GetCPUUsage(100 * time.Millisecond)
+
+		// Assert
+		if err == nil {
+			t.Error("Expected error from CPU provider, got nil")
+		}
+		if !contains(err.Error(), "failed to get CPU usage") {
+			t.Errorf("Error should mention CPU usage failure: %v", err)
+		}
+	})
+
+	t.Run("CPU Empty Slice", func(t *testing.T) {
+		// Arrange - Mock that returns empty slice (no error, but no data)
+		mockCPU := mockCPUProvider{
+			percentages: []float64{}, // Empty slice
+			err:         nil,
+		}
+		monitor := NewGopsutilMonitor(mockCPU, realMemProvider{}, realDiskProvider{})
+
+		// Act
+		_, err := monitor.GetCPUUsage(100 * time.Millisecond)
+
+		// Assert
+		if err == nil {
+			t.Error("Expected error for empty CPU data, got nil")
+		}
+		if !contains(err.Error(), "no CPU usage data returned") {
+			t.Errorf("Error should mention no CPU data: %v", err)
+		}
+	})
+
+	t.Run("Memory VirtualMemory Error", func(t *testing.T) {
+		// Arrange - Simple dependency injection
+		mockMem := mockMemProvider{
+			vmStat: nil,
+			err:    errors.New("mock memory error"),
+		}
+		monitor := NewGopsutilMonitor(realCPUProvider{}, mockMem, realDiskProvider{})
+
+		// Act
+		_, err := monitor.GetMemoryUsage()
+
+		// Assert
+		if err == nil {
+			t.Error("Expected error from memory provider, got nil")
+		}
+		if !contains(err.Error(), "failed to get memory usage") {
+			t.Errorf("Error should mention memory usage failure: %v", err)
+		}
+	})
+
+	t.Run("Disk Usage Error", func(t *testing.T) {
+		// Arrange - Simple dependency injection
+		mockDisk := mockDiskProvider{
+			usageStat: nil,
+			err:       errors.New("mock disk error"),
+		}
+		monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, mockDisk)
+
+		// Act
+		_, err := monitor.GetDiskUsage("/invalid/path")
+
+		// Assert
+		if err == nil {
+			t.Error("Expected error from disk provider, got nil")
+		}
+		if !contains(err.Error(), "failed to get disk usage") {
+			t.Errorf("Error should mention disk usage failure: %v", err)
+		}
+	})
+}
+
+// TestGopsutilMonitorSuccessPaths tests the success paths with mocked data.
+// This ensures our conversion logic works correctly.
+func TestGopsutilMonitorSuccessPaths(t *testing.T) {
+	t.Run("CPU Success", func(t *testing.T) {
+		// Arrange - Simple dependency injection
+		mockCPU := mockCPUProvider{
+			percentages: []float64{45.5}, // Valid CPU percentage
+			err:         nil,
+		}
+		monitor := NewGopsutilMonitor(mockCPU, realMemProvider{}, realDiskProvider{})
+
+		// Act
+		cpu, err := monitor.GetCPUUsage(100 * time.Millisecond)
+
+		// Assert
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if cpu != 45.5 {
+			t.Errorf("Expected CPU 45.5%%, got %f%%", cpu)
+		}
+	})
+
+	t.Run("Memory Success", func(t *testing.T) {
+		// Arrange - Simple dependency injection
+		mockMem := mockMemProvider{
+			vmStat: &mem.VirtualMemoryStat{
+				UsedPercent: 75.0,
+				Used:        8 * 1024 * 1024 * 1024,  // 8GB
+				Total:       16 * 1024 * 1024 * 1024, // 16GB
+			},
+			err: nil,
+		}
+		monitor := NewGopsutilMonitor(realCPUProvider{}, mockMem, realDiskProvider{})
+
+		// Act
+		mem, err := monitor.GetMemoryUsage()
+
+		// Assert
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if mem.UsedPercent != 75.0 {
+			t.Errorf("Expected memory 75.0%%, got %f%%", mem.UsedPercent)
+		}
+		if mem.Used != 8*1024*1024*1024 {
+			t.Errorf("Expected used 8GB, got %d", mem.Used)
+		}
+	})
+
+	t.Run("Disk Success", func(t *testing.T) {
+		// Arrange - Simple dependency injection
+		mockDisk := mockDiskProvider{
+			usageStat: &disk.UsageStat{
+				UsedPercent: 60.0,
+				Used:        600 * 1024 * 1024 * 1024,  // 600GB
+				Total:       1000 * 1024 * 1024 * 1024, // 1TB
+			},
+			err: nil,
+		}
+		monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, mockDisk)
+
+		// Act
+		disk, err := monitor.GetDiskUsage("/test")
+
+		// Assert
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if disk.UsedPercent != 60.0 {
+			t.Errorf("Expected disk 60.0%%, got %f%%", disk.UsedPercent)
+		}
+		if disk.Used != 600*1024*1024*1024 {
+			t.Errorf("Expected used 600GB, got %d", disk.Used)
+		}
+	})
 }
 
 // Helper functions for tests
@@ -244,7 +441,7 @@ func abs(x float64) float64 {
 // This ensures GopsutilMonitor actually implements SystemMonitor correctly.
 func TestSystemMonitorInterface(t *testing.T) {
 	// Arrange - Create real monitor
-	monitor := NewGopsutilMonitor()
+	monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, realDiskProvider{})
 
 	// Act & Assert - Verify it's not nil
 	if monitor == nil {
@@ -281,7 +478,7 @@ func TestValidMemoryPercentages(t *testing.T) {
 	}
 
 	// Arrange
-	monitor := NewGopsutilMonitor()
+	monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, realDiskProvider{})
 
 	// Act
 	mem, err := monitor.GetMemoryUsage()

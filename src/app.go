@@ -31,7 +31,7 @@ func newApp() (*App, error) {
 	}
 
 	// Create the monitor instance - App handles its own dependencies
-	monitor := NewGopsutilMonitor()
+	monitor := NewGopsutilMonitor(realCPUProvider{}, realMemProvider{}, realDiskProvider{})
 
 	// Create UI components using the factory function from ui.go
 	cpuGauge, memoryGauge, diskGauge, infoList := createWidgets()
