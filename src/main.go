@@ -11,9 +11,6 @@ import (
 	// Import with alias - 'ui' is shorter than 'termui'
 	ui "github.com/gizak/termui/v3"
 	"github.com/gizak/termui/v3/widgets"
-	"github.com/shirou/gopsutil/v4/cpu"
-	"github.com/shirou/gopsutil/v4/disk"
-	"github.com/shirou/gopsutil/v4/mem"
 )
 
 // SystemStats holds real-time system monitoring data.
@@ -38,6 +35,10 @@ type MetricResult struct {
 
 // Global configuration - accessible from anywhere in this package
 var config = Config
+
+// Global monitor instance - this is our interface in action!
+// We use the constructor function to create a clean instance
+var monitor SystemMonitor = NewGopsutilMonitor()
 
 // main - Entry point of our program
 // This function demonstrates: error handling, defer, UI setup, event loops
@@ -232,24 +233,27 @@ func fetchSystemStats(statsCh chan SystemStats) {
 		}
 
 		// Process successful results based on type
+		// Now we work with our clean interface types!
 		switch result.Type {
 		case "cpu":
 			if cpuUsage, ok := result.Value.(float64); ok {
 				stats.CPUUsage = cpuUsage
 			}
 		case "memory":
-			if vmStat, ok := result.Value.(*mem.VirtualMemoryStat); ok {
-				stats.MemoryUsage = vmStat.UsedPercent
+			// Now we get clean MemoryInfo instead of gopsutil's VirtualMemoryStat
+			if memInfo, ok := result.Value.(*MemoryInfo); ok {
+				stats.MemoryUsage = memInfo.UsedPercent
 				// Convert bytes to gigabytes using config constant
-				stats.MemoryUsed = float64(vmStat.Used) / float64(config.BytesToGB)
-				stats.MemoryTotal = float64(vmStat.Total) / float64(config.BytesToGB)
+				stats.MemoryUsed = float64(memInfo.Used) / float64(config.BytesToGB)
+				stats.MemoryTotal = float64(memInfo.Total) / float64(config.BytesToGB)
 			}
 		case "disk":
-			if diskStat, ok := result.Value.(*disk.UsageStat); ok {
-				stats.DiskUsage = diskStat.UsedPercent
+			// Now we get clean DiskInfo instead of gopsutil's UsageStat
+			if diskInfo, ok := result.Value.(*DiskInfo); ok {
+				stats.DiskUsage = diskInfo.UsedPercent
 				// Convert bytes to gigabytes using config constant
-				stats.DiskUsed = float64(diskStat.Used) / float64(config.BytesToGB)
-				stats.DiskTotal = float64(diskStat.Total) / float64(config.BytesToGB)
+				stats.DiskUsed = float64(diskInfo.Used) / float64(config.BytesToGB)
+				stats.DiskTotal = float64(diskInfo.Total) / float64(config.BytesToGB)
 			}
 		}
 	}
@@ -258,63 +262,58 @@ func fetchSystemStats(statsCh chan SystemStats) {
 	statsCh <- stats
 }
 
-// fetchCPUMetric retrieves CPU usage with proper error handling and WaitGroup coordination.
-// It demonstrates how to integrate WaitGroup with error handling.
+// fetchCPUMetric retrieves CPU usage using our SystemMonitor interface.
+// This demonstrates interface usage - we don't know or care what implementation is used!
 func fetchCPUMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
 	// ALWAYS call Done() when function exits - use defer for safety
 	defer wg.Done()
 
-	// cpu.Percent() measures CPU usage over a time period
-	// config.CPUSampleDuration is how long to measure (100ms for responsiveness)
-	// false means "don't get per-CPU stats, just overall average"
-	percentages, err := cpu.Percent(config.CPUSampleDuration, false)
+	// USE THE INTERFACE! This is the key change.
+	// We call monitor.GetCPUUsage instead of cpu.Percent directly
+	// The function doesn't know if it's talking to GopsutilMonitor, MockMonitor, etc.
+	cpuUsage, err := monitor.GetCPUUsage(config.CPUSampleDuration)
 	if err != nil {
-		// Send proper error instead of sentinel value
-		results <- MetricResult{Type: "cpu", Value: nil, Error: fmt.Errorf("failed to get CPU usage: %w", err)}
+		// Interface already wrapped the error nicely
+		results <- MetricResult{Type: "cpu", Value: nil, Error: err}
 		return
 	}
 
-	if len(percentages) == 0 {
-		// Handle edge case where no data is returned
-		results <- MetricResult{Type: "cpu", Value: nil, Error: fmt.Errorf("no CPU usage data returned")}
-		return
-	}
-
-	// Success! Send the actual value with no error
-	results <- MetricResult{Type: "cpu", Value: percentages[0], Error: nil}
+	// Success! Send the clean result
+	results <- MetricResult{Type: "cpu", Value: cpuUsage, Error: nil}
 }
 
-// fetchMemoryMetric retrieves memory usage with proper error handling and WaitGroup coordination.
+// fetchMemoryMetric retrieves memory usage using our SystemMonitor interface.
+// Clean and simple - just like the CPU version!
 func fetchMemoryMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
 	// ALWAYS call Done() when function exits - use defer for safety
 	defer wg.Done()
 
-	// mem.VirtualMemory() returns a pointer to a struct with memory info
-	vmStat, err := mem.VirtualMemory()
+	// USE THE INTERFACE! Much simpler than the old version
+	memoryInfo, err := monitor.GetMemoryUsage()
 	if err != nil {
-		// Send proper error instead of nil pointer
-		results <- MetricResult{Type: "memory", Value: nil, Error: fmt.Errorf("failed to get memory usage: %w", err)}
+		// Interface already wrapped the error nicely
+		results <- MetricResult{Type: "memory", Value: nil, Error: err}
 		return
 	}
 
-	// Success! Send the actual data with no error
-	results <- MetricResult{Type: "memory", Value: vmStat, Error: nil}
+	// Success! Send the clean result
+	results <- MetricResult{Type: "memory", Value: memoryInfo, Error: nil}
 }
 
-// fetchDiskMetric retrieves disk usage with proper error handling and WaitGroup coordination.
+// fetchDiskMetric retrieves disk usage using our SystemMonitor interface.
+// Clean and consistent with other interface-based functions!
 func fetchDiskMetric(wg *sync.WaitGroup, results chan<- MetricResult) {
 	// ALWAYS call Done() when function exits - use defer for safety
 	defer wg.Done()
 
-	// disk.Usage() gets information about the specified drive
-	// config.DiskDrive is set in our configuration (usually "C:" on Windows)
-	diskStat, err := disk.Usage(config.DiskDrive)
+	// USE THE INTERFACE! Consistent pattern across all metrics
+	diskInfo, err := monitor.GetDiskUsage(config.DiskDrive)
 	if err != nil {
-		// Send proper error instead of nil pointer
-		results <- MetricResult{Type: "disk", Value: nil, Error: fmt.Errorf("failed to get disk usage for %s: %w", config.DiskDrive, err)}
+		// Interface already wrapped the error nicely
+		results <- MetricResult{Type: "disk", Value: nil, Error: err}
 		return
 	}
 
-	// Success! Send the actual data with no error
-	results <- MetricResult{Type: "disk", Value: diskStat, Error: nil}
+	// Success! Send the clean result
+	results <- MetricResult{Type: "disk", Value: diskInfo, Error: nil}
 }
